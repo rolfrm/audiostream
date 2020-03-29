@@ -152,17 +152,28 @@
 				    (incf sample v)
 				    (setf (cdr gen) (-calc-next-sample (cdr gen)))
 				    gen)
-				  
-				  (-calc-next-sample (cdr gen)))))))
-		 (setf generators (-calc-next-sample generators)))
+				  (progn
+				    (-calc-next-sample (cdr gen))))))))
+		 (setf generators (-calc-next-sample generators))
+		 )
 	       sample)))    
-    (flet ((audio-gen (buffer)
-	     (let ((generators2 (audio-generators audio)))
-	       (when generators2
-		 (when (eq (sb-ext:compare-and-swap (audio-generators audio) generators2 nil) generators2)
-		   (setf generators (concatenate 'list generators2 (audio-generators audio))))))
-	     (dotimes (i (array-total-size buffer))
-	       (setf (aref buffer i) (coerce  (/ (atan (calc-next-sample2)) 0.5 pi) 'single-float)))))
+      (labels (
+	       (do-gen (buffer)
+		 (restart-case 
+		     (dotimes (i (array-total-size buffer))
+		       (setf (aref buffer i) (coerce  (/ (atan (calc-next-sample2)) 0.5 pi) 'single-float)))
+		   (try-it-again () (audio-gen buffer))
+	       
+		   ))
+	       
+	       (audio-gen (buffer)
+		 (let ((generators2 (audio-generators audio)))
+		   (when generators2
+		     (when (eq (sb-ext:compare-and-swap (audio-generators audio) generators2 nil) generators2)
+		       (setf generators (concatenate 'list generators2 generators))
+		       )))
+		 (do-gen buffer))
+	       )
       (destructuring-bind (get-buffer proc-buf) (get-buffer-processor #'audio-gen)
 	(flet (
 	       (play-buffers ()
